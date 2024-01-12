@@ -21,7 +21,7 @@ bits_board = 8
 parity_rs232 = None
 parity_board = None
 sleep_after_board_cmd_ms = 100
-additional_wait_for_board_response_ms = 300
+additional_wait_for_board_response_ms = 1000
 long_additional_wait_for_board_response_ms = 800
 wait_for_face_recognition_ms = 4000
 wait_for_face_recognition_attempt_ms = 100
@@ -30,6 +30,9 @@ display_on_during_auth = True
 display_on_off_attempts = 3
 lights_on_during_auth = False
 lights_on_off_attempts = 3
+board_startup_delay_ms = 1000
+init_board_display_attempts_num = 3
+init_board_display_attempts_delay_ms = 1000
 try:
     from board_config import *
 except ImportError:
@@ -91,24 +94,33 @@ def get_board_output(uuart, prnt=False):
 def raise_err(msg):
     print("[ ERROR ]",msg)
 
-def init_board(iface_no,b_rate,b_tx_pin,b_rx_pin,bits_b,parity_b,stops_for_b,chatterbox, sleep_after_board_command_ms,add_wait_for_board_response_ms):
+def init_board_display(uuart, sleep_after_board_command_ms,add_wait_for_board_response_ms, chatterbox):
+    init_status = False
+    if send_board_command(uuart, 'display_off', None, True, sleep_after_board_command_ms,add_wait_for_board_response_ms):
+        board_output = get_board_output(uuart, chatterbox)
+        init_status = True
+    else:
+        raise_err("No response from board (tried to switch off display)!") 
+    if send_board_command(uuart, 'light_off', None, True, sleep_after_board_command_ms, add_wait_for_board_response_ms):
+        board_output = get_board_output(uuart, chatterbox)
+        init_status = init_status and True
+    else:
+        raise_err("No response from board (tried to switch off lights)!") 
+    if init_status:
+        if chatterbox:
+            print("Response from board received successfully. Init complete.")
+    return init_status
+
+def init_board(iface_no,b_rate,b_tx_pin,b_rx_pin,bits_b,parity_b,stops_for_b,chatterbox, sleep_after_board_command_ms,add_wait_for_board_response_ms,init_board_display_attempts, init_board_display_attempts_d_ms):
     init_status = False
     if chatterbox:
         print("Init board....")
-    uart2 = UART(iface_no, baudrate=b_rate, tx=Pin(b_tx_pin), rx=Pin(b_rx_pin))
-    uart2.init(bits=bits_b, parity=parity_b, stop=stops_for_b)
-    if send_board_command(uart2, 'display_off', None, True, sleep_after_board_command_ms,add_wait_for_board_response_ms):
-        board_output = get_board_output(uart2, chatterbox)
-        if chatterbox:
-            print("Response from board received successfully. Init complete.")
-        if send_board_command(uart2, 'light_off', None, True, sleep_after_board_command_ms, add_wait_for_board_response_ms):
-            board_output = get_board_output(uart2, chatterbox)
-            init_status = True
-        else:
-            raise_err("No response from board (tried to switch off lights)!")
-    else:
-        raise_err("No response from board (tried to switch off display)!")
-    uart2.deinit()
+    for i in range(init_board_display_attempts):
+        uart2 = UART(iface_no, baudrate=b_rate, tx=Pin(b_tx_pin), rx=Pin(b_rx_pin))
+        uart2.init(bits=bits_b, parity=parity_b, stop=stops_for_b)
+        init_status = init_status or init_board_display(uart2, sleep_after_board_command_ms,add_wait_for_board_response_ms, chatterbox)
+        uart2.deinit()
+        time.sleep_ms(init_board_display_attempts_d_ms)
     return init_status
 
 def check_auth(iface_no,b_rate,b_tx_pin,b_rx_pin,bits_b,parity_b,stops_for_b,chatterbox, w_for_face_recognition_attempt_ms, w_for_face_recognition_ms, turn_on_lights_when_verifying=False, l_attempts=2, turn_on_display_when_verifying=False, dspl_attempts=2, sleep_after_board_command_ms=100,add_wait_for_board_response_ms=300):
@@ -164,28 +176,47 @@ def check_auth(iface_no,b_rate,b_tx_pin,b_rx_pin,bits_b,parity_b,stops_for_b,cha
     uart2.deinit()
     return board_output
 
-board_initialization_status = init_board(UART_IFACE_NO,baud_rate_board,board_tx_pin,board_rx_pin,bits_board,parity_board,stops_for_board,talkative,sleep_after_board_cmd_ms,additional_wait_for_board_response_ms)
+
+def init_rs232(iface_no,b_rate,b_tx_pin,b_rx_pin,bits_b,parity_b,stops_for_b,chatterbox):
+    uuart = UART(iface_no, baudrate=b_rate, tx=Pin(b_tx_pin), rx=Pin(b_rx_pin))
+    uuart.init(bits=bits_b, parity=parity_b, stop=stops_for_b)
+    return uuart
+
+def deinit_rs232(uuart):
+    uuart.deinit()
+
+def send_rs232_ping(uuart, rs232_ping_code):
+    uuart.write(rs232_ping_code)
+
+def check_get_read_rs232(uuart):
+    d = None
+    if uuart.any(): 
+        d = uuart.read()
+    return d
+
+time.sleep_ms(board_startup_delay_ms)
+
+board_initialization_status = init_board(UART_IFACE_NO,baud_rate_board,board_tx_pin,board_rx_pin,bits_board,parity_board,stops_for_board,talkative,sleep_after_board_cmd_ms,additional_wait_for_board_response_ms, init_board_display_attempts_num, init_board_display_attempts_delay_ms)
 
 if talkative:
     print("Init board success: ", board_initialization_status)
 
-uart = UART(UART_IFACE_NO, baudrate=baud_rate_rs232, tx=Pin(rs232_tx_pin), rx=Pin(rs232_rx_pin))
-uart.init(bits=bits_rs232, parity=parity_rs232, stop=stops_for_rs232)
+uart = init_rs232(UART_IFACE_NO,baud_rate_rs232,rs232_tx_pin,rs232_rx_pin,bits_rs232,parity_rs232,stops_for_rs232,talkative)
+
 led = Pin(led_pin, Pin.OUT)
 
 while True:
-    uart.write(ping_code)
-    if uart.any(): 
-        data = uart.read()
+    send_rs232_ping(uart,ping_code)
+    data = check_get_read_rs232(uart)
+    if data is not None:
         if data==request_access_code:
             # Check access
-            uart.deinit()
+            deinit_rs232(uart)
             access_received = access_denied_code
             user_id_detected = check_auth(UART_IFACE_NO,baud_rate_board,board_tx_pin,board_rx_pin,bits_board,parity_board,stops_for_board, talkative, wait_for_face_recognition_attempt_ms, wait_for_face_recognition_ms, lights_on_during_auth,lights_on_off_attempts, display_on_during_auth, display_on_off_attempts, sleep_after_board_cmd_ms,additional_wait_for_board_response_ms)
             if len(user_id_detected) > 0:
                 access_received = access_granted_code
-            uart = UART(UART_IFACE_NO, baudrate=baud_rate_rs232, tx=Pin(rs232_tx_pin), rx=Pin(rs232_rx_pin))
-            uart.init(bits=bits_rs232, parity=parity_rs232, stop=stops_for_rs232)
+            uart = init_rs232(UART_IFACE_NO,baud_rate_rs232,rs232_tx_pin,rs232_rx_pin,bits_rs232,parity_rs232,stops_for_rs232,talkative)
             uart.write(access_received)
     time.sleep_ms(sleep_delay_msec)
 
