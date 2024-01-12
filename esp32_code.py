@@ -27,9 +27,9 @@ wait_for_face_recognition_ms = 4000
 wait_for_face_recognition_attempt_ms = 100
 talkative = True
 display_on_during_auth = True
-display_on_off_attempts = 5
+display_on_off_attempts = 3
 lights_on_during_auth = False
-lights_on_off_attempts = 5
+lights_on_off_attempts = 3
 try:
     from board_config import *
 except ImportError:

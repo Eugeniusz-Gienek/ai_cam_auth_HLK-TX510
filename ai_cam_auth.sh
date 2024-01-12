@@ -14,7 +14,6 @@ fi
 
 #chmod 0666 /dev/ttyACM0
 #chmod 0666 /dev/ttyUSB0
-#usbreset 067b:23c3
 
 LAUNCH_SCRIPT="launch.py"
 
