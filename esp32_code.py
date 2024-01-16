@@ -7,9 +7,12 @@ rs232_rx_pin = 9
 board_tx_pin = 21
 board_rx_pin = 20
 request_access_code = b'r'
+request_access_code_silent = b's'
+request_access_user_code = b'u'
+request_access_user_code_silent = b'y'
 ping_code = b't'
-access_granted_code = b'a'
-access_denied_code = b'd'
+access_granted_code = b'\x01'
+access_denied_code = b'\x00'
 baud_rate_rs232 = 9600
 baud_rate_board = 115200
 UART_IFACE_NO = 1
@@ -33,8 +36,13 @@ lights_on_off_attempts = 3
 board_startup_delay_ms = 1000
 init_board_display_attempts_num = 3
 init_board_display_attempts_delay_ms = 1000
+users_codes = None
 try:
     from board_config import *
+except ImportError:
+    pass
+try:
+    from users_list import users_codes
 except ImportError:
     pass
 # EOF config
@@ -123,8 +131,10 @@ def init_board(iface_no,b_rate,b_tx_pin,b_rx_pin,bits_b,parity_b,stops_for_b,cha
         time.sleep_ms(init_board_display_attempts_d_ms)
     return init_status
 
-def check_auth(iface_no,b_rate,b_tx_pin,b_rx_pin,bits_b,parity_b,stops_for_b,chatterbox, w_for_face_recognition_attempt_ms, w_for_face_recognition_ms, turn_on_lights_when_verifying=False, l_attempts=2, turn_on_display_when_verifying=False, dspl_attempts=2, sleep_after_board_command_ms=100,add_wait_for_board_response_ms=300):
-    no_face_code = b'\xEF\xAA\x00\x00\x00\x00\x02\x12\x01\x15'
+def check_auth(iface_no,b_rate,b_tx_pin,b_rx_pin,bits_b,parity_b,stops_for_b,chatterbox, w_for_face_recognition_attempt_ms, w_for_face_recognition_ms, turn_on_lights_when_verifying=False, l_attempts=2, turn_on_display_when_verifying=False, dspl_attempts=2, sleep_after_board_command_ms=100,add_wait_for_board_response_ms=300, uusers_codes=None):
+    face_example_code      = b'\xef\xaa\x00\x00\x00\x00\x04\x12\x00\x00\x02\x18'
+    no_face_code           = b'\xEF\xAA\x00\x00\x00\x00\x02\x12\x01\x15'
+    error_detection_code   = b'\xef\xaa\x00\x00\x00\x00\x02\x12\x03\x17'
     start_recognition_code = b'\xef\xaa\x00\x00\x00\x00\x02\xc1\x00\xc3'
     uart2 = UART(iface_no, baudrate=b_rate, tx=Pin(b_tx_pin), rx=Pin(b_rx_pin))
     uart2.init(bits=bits_b, parity=parity_b, stop=stops_for_b)
@@ -154,11 +164,40 @@ def check_auth(iface_no,b_rate,b_tx_pin,b_rx_pin,bits_b,parity_b,stops_for_b,cha
                 if chatterbox:
                     print("Start recognition code received. Ignoring.")
                 board_output = ""
+            elif (board_output == error_detection_code):
+                if chatterbox:
+                    print("Error recognition code received. Ignoring.")
+                board_output = ""
+                send_board_command(uart2, 'start_recognition', None, False)
             elif (board_output == no_face_code):
                 if chatterbox:
                     print("No user face detected!")
                 board_output = ""
                 send_board_command(uart2, 'start_recognition', None, False)
+            elif uusers_codes is not None:
+                if len(board_output) > len(face_example_code) + len(start_recognition_code):
+                    if chatterbox:
+                        print("Detected value is a bit too long, so we'll try to cut the first part.")
+                    # probably there are two codes at one. let's get the last part only. First part is usually a start recodgnition code.
+                    board_output = board_output[len(start_recognition_code):]
+                if board_output not in uusers_codes.values():
+                    if chatterbox:
+                        print("Detected value NOT in users database!")
+                    board_output = ""
+                    send_board_command(uart2, 'start_recognition', None, False)
+                else:
+                    user_code = board_output
+                    board_output = [i for i in uusers_codes if uusers_codes[i] == user_code]
+                    if len(board_output) > 0:
+                        board_output = board_output[0]
+                    else:
+                        print("Weird bug happened - on one hand the code was found, on the other - empty result. Maybe the key is an empty string. Anyways, this should NOT happen.")
+                        board_output = ""
+                    if chatterbox:
+                        print("User ID detected: ", board_output)
+                    break
+            else:
+                break
         time.sleep_ms(w_for_face_recognition_attempt_ms)
     # EOF verification
     if turn_on_display_when_verifying:
@@ -209,14 +248,29 @@ while True:
     send_rs232_ping(uart,ping_code)
     data = check_get_read_rs232(uart)
     if data is not None:
-        if data==request_access_code:
+        if (data==request_access_code) or (data==request_access_code_silent):
             # Check access
             deinit_rs232(uart)
             access_received = access_denied_code
-            user_id_detected = check_auth(UART_IFACE_NO,baud_rate_board,board_tx_pin,board_rx_pin,bits_board,parity_board,stops_for_board, talkative, wait_for_face_recognition_attempt_ms, wait_for_face_recognition_ms, lights_on_during_auth,lights_on_off_attempts, display_on_during_auth, display_on_off_attempts, sleep_after_board_cmd_ms,additional_wait_for_board_response_ms)
+            user_id_detected = check_auth(UART_IFACE_NO,baud_rate_board,board_tx_pin,board_rx_pin,bits_board,parity_board,stops_for_board, talkative, wait_for_face_recognition_attempt_ms, wait_for_face_recognition_ms, False if (data==request_access_code_silent) else lights_on_during_auth,lights_on_off_attempts, False if (data==request_access_code_silent) else display_on_during_auth, display_on_off_attempts, sleep_after_board_cmd_ms,additional_wait_for_board_response_ms, users_codes)
             if len(user_id_detected) > 0:
                 access_received = access_granted_code
             uart = init_rs232(UART_IFACE_NO,baud_rate_rs232,rs232_tx_pin,rs232_rx_pin,bits_rs232,parity_rs232,stops_for_rs232,talkative)
+            if talkative:
+                print("Sending response code for non-user specific request:", access_received)
+            uart.write(access_received)
+        elif data==request_access_user_code:
+            # Check access
+            deinit_rs232(uart)
+            access_received = access_denied_code
+            user_id_detected = check_auth(UART_IFACE_NO,baud_rate_board,board_tx_pin,board_rx_pin,bits_board,parity_board,stops_for_board, talkative, wait_for_face_recognition_attempt_ms, wait_for_face_recognition_ms, False if (data==request_access_user_code_silent) else lights_on_during_auth,lights_on_off_attempts, False if (data==request_access_user_code_silent) else display_on_during_auth, display_on_off_attempts, sleep_after_board_cmd_ms,additional_wait_for_board_response_ms, users_codes)
+            if len(user_id_detected) > 0:
+                access_received = access_granted_code
+                if users_codes is not None:
+                    access_received = access_granted_code+user_id_detected
+            uart = init_rs232(UART_IFACE_NO,baud_rate_rs232,rs232_tx_pin,rs232_rx_pin,bits_rs232,parity_rs232,stops_for_rs232,talkative)
+            if talkative:
+                print("Sending response code for user-specific request:", access_received)
             uart.write(access_received)
     time.sleep_ms(sleep_delay_msec)
 

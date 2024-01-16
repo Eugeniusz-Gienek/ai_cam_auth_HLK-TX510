@@ -1,0 +1,8 @@
+[DEFAULT]
+connectType = rs232
+verbose = no
+veryVerbose = no
+timeout = 5
+
+[RS232]
+deviceAddr = /dev/ttyUSB0

@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 cd "$(dirname "$0")"
+
+# in $PAM_USER we have the username that wants to auth.
+username=$PAM_USER # let's save it in case smth in "activate" script would unset it for some reason. Future-proofing.
+
 SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 if [[ -z "${python_cmd}" ]]; then
     python_cmd="python3"
@@ -32,6 +36,8 @@ fi
 #if [[ $use_venv -eq 1 ]] && [[ -z "${VIRTUAL_ENV}" ]]; then
 #    ./install_cam_auth.sh
 #fi
+
+set -- "$@" "-t $username"
 
 "${python_cmd}" -u "${LAUNCH_SCRIPT}" "$@"
 
