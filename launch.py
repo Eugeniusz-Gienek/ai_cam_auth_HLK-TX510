@@ -14,6 +14,8 @@ timeout_for_verification = 5 # seconds
 
 # tech config
 config_filename = 'config.ini'
+users_filename = 'users.ini'
+config_directory = os.path.dirname(os.path.abspath(__file__))
 baud_rate = 9600 # for R232 it's arguably the best working option
 conn_tout = 1
 # Interaction codes with the board
@@ -125,28 +127,68 @@ def check_user_match(user_system_name, board_user_id):
             return int(users_list[user_system_name]) == board_user_id
     return False
 
-if not device_exists(device_addr):
-    print("[ ERROR ] Unfortunately the device was not found.")
-    exit(1)
-
 def main(argv):
-    global check_for_user, verbose_p, verbose_pp, a_level, aceess_task, get_next_byte, users_list, config_filename
-    if os.path.isfile(config_filename):
+    global check_for_user, verbose_p, verbose_pp, a_level
+    global aceess_task, get_next_byte, users_list, config_filename, device_addr
+    global timeout_for_verification, connect_type
+    global config_filename, users_filename, config_directory
+    config_full_path_filename = os.path.join(config_directory, config_filename)
+    users_full_path_config = os.path.join(config_directory, users_filename)
+    username = ""
+    username_provided = False
+    try:
+       opts, args = getopt.getopt(argv,"htcu:",["tuser=", "config=", "users="])
+       for opt, arg in opts:
+           if opt == '-h':
+               print (os.path.basename(__file__),' -t <user> -c config_file_full_path -u users_file_full_path')
+               sys.exit(0)
+           elif opt in ("-t", "--tuser"):
+               username = arg.strip()
+               if username != "":
+                   check_for_user = True
+                   username_provided = True
+           elif opt in ("-c", "--config="):
+               config_full_path_filename_check = arg.strip()
+               if config_full_path_filename_check != "":
+                   config_full_path_filename = config_full_path_filename_check
+           elif opt in ("-u", "--users="):
+               users_full_path_filename_check = arg.strip()
+               if users_full_path_filename_check != "":
+                   users_full_path_config = users_full_path_filename_check
+    except getopt.GetoptError:
+       pass
+    if os.path.isfile(config_full_path_filename):
         config = configparser.ConfigParser()
         try:
-            config.read(config_filename)
+            config.read(config_full_path_filename)
             if 'DEFAULT' in config:
-                if 'verbose' in config['DEFAULT']:
-                    verbose_p = config['DEFAULT']['verbose'] == 'yes'
                 if 'veryVerbose' in config['DEFAULT']:
                     verbose_pp = config['DEFAULT']['veryVerbose'] == 'yes'
+                    if verbose_pp:
+                        print("[ INFO ] Setting (from config) verbose level extended to: ",verbose_pp)
+                if 'verbose' in config['DEFAULT']:
+                    verbose_p = config['DEFAULT']['verbose'] == 'yes'
+                    if verbose_pp:
+                        print("[ INFO ] Setting (from config) verbose level basic to: ",verbose_p)
                 if 'connectType' in config['DEFAULT']:
                     connect_type = config['DEFAULT']['connectType']
+                    if verbose_pp:
+                        print("[ INFO ] Setting (from config) connect type to: ", connect_type)
                 if 'timeout' in config['DEFAULT']:
                     timeout_for_verification = int(config['DEFAULT']['timeout'])
+                    if verbose_pp:
+                        print("[ INFO ] Setting (from config) timeout to: ", timeout_for_verification,' seconds.')
             if 'RS232' in config:
+                if verbose_pp:
+                    print("[ INFO ] Checking RS232 section in config...")
                 if 'deviceAddr' in config['RS232']:
                     device_addr = config['RS232']['deviceAddr']
+                    if verbose_pp:
+                        print("[ INFO ] Setting (from config) device address to: ", device_addr)
+            if verbose_pp:
+                print("[ INFO ] Using config file \"{0}\".".format(config_full_path_filename))
+            if verbose_pp:
+                print("[ INFO ] Using users config file \"{0}\".".format(users_full_path_config))
         except Exception as e:
             print('[ ERROR ] Error parsing config.ini file. It exists but there is smth wrong with it. Error looks like this: ',e)
     if verbose_pp:
@@ -157,28 +199,13 @@ def main(argv):
         print("[ INFO ] Connection type:", connect_type)
         print("[ INFO ] Timeout:", timeout_for_verification, "seconds.")
         print("[ INFO ] RS232 device address:", device_addr)
-    username = ""
-    username_provided = False
-    try:
-       opts, args = getopt.getopt(argv,"ht:",["tuser="])
-       for opt, arg in opts:
-           if opt == '-h':
-               print (os.path.basename(__file__),' -t <user>')
-               sys.exit(0)
-           elif opt in ("-t", "--tuser"):
-               username = arg.strip()
-               if username != "":
-                   check_for_user = True
-                   username_provided = True
-    except getopt.GetoptError:
-       pass
     if username_provided:
         if verbose_p:
             print("[ INFO ] Username to check: \"{0}\"".format(username))
-        if os.path.isfile('users.ini'):
+        if os.path.isfile(users_full_path_config):
             users_config = configparser.ConfigParser()
             try:
-                users_config.read('users.ini')
+                users_config.read(users_full_path_config)
                 if 'Users' not in users_config:
                     raise Exception("There is no \"Users\" section in the configuration.")
                 users_list = users_config['Users']
@@ -188,6 +215,9 @@ def main(argv):
     if connect_type == 'rs232':
         if verbose_p:
             print('[ INFO ] Connecting via RS232.')
+        if not device_exists(device_addr):
+            print("[ ERROR ] Unfortunately the device \"{0}\" was not found.".format(device_addr))
+            exit(1)
         loop = asyncio.get_event_loop()
         coro = serial_asyncio.create_serial_connection(loop, OutputProtocol, device_addr, baudrate=baud_rate, timeout=conn_tout)
         transport, protocol = loop.run_until_complete(coro)
