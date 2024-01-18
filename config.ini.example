@@ -1,8 +1,10 @@
 [DEFAULT]
 connectType = rs232
-verbose = no
-veryVerbose = no
+verbose = yes
+veryVerbose = yes
 timeout = 5
 
 [RS232]
-deviceAddr = /dev/ttyUSB0
+#deviceAddr = /dev/ttyUSB0
+idVendor = 067b
+idProduct = 23c3
