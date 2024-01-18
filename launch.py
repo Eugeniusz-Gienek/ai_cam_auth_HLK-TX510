@@ -8,7 +8,9 @@ import configparser
 connect_type = 'rs232'
 verbose_p = False # first level of verbosity
 verbose_pp = False # second level of verbosity
-device_addr = '/dev/ttyUSB0' # Com port-connected
+device_addr = None # Com port-connected
+device_idVendor = None
+device_idProduct = None
 timeout_for_verification = 5 # seconds
 # EOF config
 
@@ -40,6 +42,8 @@ access_task = asyncio.Event()
 
 def device_exists(path):
     """Test whether a path exists.  Returns False for broken symbolic links"""
+    if path is None:
+        return False
     try:
         os.stat(path)
     except OSError:
@@ -129,7 +133,8 @@ def check_user_match(user_system_name, board_user_id):
 
 def main(argv):
     global check_for_user, verbose_p, verbose_pp, a_level
-    global aceess_task, get_next_byte, users_list, config_filename, device_addr
+    global aceess_task, get_next_byte, users_list, config_filename
+    global device_addr, device_idVendor, device_idProduct
     global timeout_for_verification, connect_type
     global config_filename, users_filename, config_directory
     config_full_path_filename = os.path.join(config_directory, config_filename)
@@ -185,6 +190,11 @@ def main(argv):
                     device_addr = config['RS232']['deviceAddr']
                     if verbose_pp:
                         print("[ INFO ] Setting (from config) device address to: ", device_addr)
+                if ('idVendor' in config['RS232']) and ('idProduct' in config['RS232']):
+                    device_idVendor = config['RS232']['idVendor']
+                    device_idProduct = config['RS232']['idProduct']
+                    if verbose_pp:
+                        print("[ INFO ] Setting (from config) device address to: ", device_addr)
             if verbose_pp:
                 print("[ INFO ] Using config file \"{0}\".".format(config_full_path_filename))
             if verbose_pp:
@@ -215,6 +225,17 @@ def main(argv):
     if connect_type == 'rs232':
         if verbose_p:
             print('[ INFO ] Connecting via RS232.')
+        if device_addr is None:
+            if (device_idVendor is not None) and (device_idProduct is not None):
+                try:
+                    import pyudev
+                    context = pyudev.Context()
+                    for device in context.list_devices(subsystem='tty',ID_VENDOR_ID=device_idVendor, ID_MODEL_ID=device_idProduct):
+                        device_addr = device.properties['DEVNAME']
+                except Exception as e:
+                    device_addr = None
+                    if verbose_pp:
+                        print("[ ERROR ] There was an error finding the device. Error text:", e)
         if not device_exists(device_addr):
             print("[ ERROR ] Unfortunately the device \"{0}\" was not found.".format(device_addr))
             exit(1)
@@ -224,7 +245,6 @@ def main(argv):
         try:
             loop.run_until_complete(access_verified(loop))
         finally:
-        #    loop.run_until_complete(loop.shutdown_asyncgens())
             loop.close()
         if a_level is None:
             if verbose_p:
