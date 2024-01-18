@@ -3,6 +3,7 @@ import asyncio
 import contextlib
 import serial_asyncio
 import configparser
+import pyudev
 
 # default config
 connect_type = 'rs232'
@@ -226,9 +227,12 @@ def main(argv):
         if verbose_p:
             print('[ INFO ] Connecting via RS232.')
         if device_addr is None:
+            if verbose_pp:
+                print('[ INFO ] Device_addr is none, so let\'s check for vendor and product id.')
             if (device_idVendor is not None) and (device_idProduct is not None):
                 try:
-                    import pyudev
+                    if verbose_pp:
+                        print('[ INFO ] Received Vendor ID and Product ID. Let\'s try to get the device parameters.')
                     context = pyudev.Context()
                     for device in context.list_devices(subsystem='tty',ID_VENDOR_ID=device_idVendor, ID_MODEL_ID=device_idProduct):
                         device_addr = device.properties['DEVNAME']

@@ -36,6 +36,7 @@ fi
 #if [[ $use_venv -eq 1 ]] && [[ -z "${VIRTUAL_ENV}" ]]; then
 #    ./install_cam_auth.sh
 #fi
+#echo $(whoami)
 
 set -- "$@" "-t $username"
 
