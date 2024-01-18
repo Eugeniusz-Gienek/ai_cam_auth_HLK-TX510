@@ -137,7 +137,7 @@ def main(argv):
     username = ""
     username_provided = False
     try:
-       opts, args = getopt.getopt(argv,"htcu:",["tuser=", "config=", "users="])
+       opts, args = getopt.getopt(argv,"ht:c:a:",["tuser=", "config=", "users="])
        for opt, arg in opts:
            if opt == '-h':
                print (os.path.basename(__file__),' -t <user> -c config_file_full_path -u users_file_full_path')
@@ -151,7 +151,7 @@ def main(argv):
                config_full_path_filename_check = arg.strip()
                if config_full_path_filename_check != "":
                    config_full_path_filename = config_full_path_filename_check
-           elif opt in ("-u", "--users="):
+           elif opt in ("-a", "--users="):
                users_full_path_filename_check = arg.strip()
                if users_full_path_filename_check != "":
                    users_full_path_config = users_full_path_filename_check
