@@ -74,7 +74,7 @@ class OutputProtocol(asyncio.Protocol):
                 print("[ INFO ] User id code received: \"{0}\"".format(int(data)))
             access_task.set()
         elif data == code_for_ping:
-            transport.write(b'r')
+            self.transport.write(b'r')
         elif (data == code_for_granted) and (not check_for_user):
             a_level = 'a'
             access_task.set()
